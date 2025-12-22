@@ -27,11 +27,41 @@
       </div>
     </header>
 
+    <!-- MOBILE TABS -->
+    <div class="lg:hidden px-4 pt-4">
+      <div class="grid grid-cols-3 gap-2 bg-panel border border-border-subtle rounded-2xl p-2">
+        <button
+          class="btn-base text-xs"
+          :class="activePanel === 'tables' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+          @click="activePanel = 'tables'"
+        >
+          Tablas
+        </button>
+        <button
+          class="btn-base text-xs"
+          :class="activePanel === 'query' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+          @click="activePanel = 'query'"
+        >
+          Consulta
+        </button>
+        <button
+          class="btn-base text-xs"
+          :class="activePanel === 'logs' ? 'bg-white/10' : 'bg-white/5 hover:bg-white/10'"
+          @click="activePanel = 'logs'"
+        >
+          Logs
+        </button>
+      </div>
+    </div>
+
     <!-- MAIN -->
     <main class="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-4 p-4">
 
       <!-- SIDEBAR TABLES -->
-      <aside class="flex flex-col gap-3 bg-panel border border-border-subtle rounded-2xl p-4">
+      <aside
+        class="flex flex-col gap-3 bg-panel border border-border-subtle rounded-2xl p-4"
+        :class="activePanel === 'tables' ? 'flex' : 'hidden lg:flex'"
+      >
         <div class="flex items-center justify-between">
           <h2 class="font-bold text-sm uppercase tracking-wider text-white/50">Tablas</h2>
           <button class="text-xs hover:text-white" @click="refreshTables" :disabled="busy">
@@ -93,11 +123,67 @@
               </div>
             </div>
           </div>
+
+          <!-- PREVIEW -->
+          <div class="mt-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-bold text-white/50 uppercase">Preview</h4>
+              <button class="text-xs hover:text-white" @click="refreshPreview" :disabled="busy">
+                Ver
+              </button>
+            </div>
+
+            <div v-if="previewLoading" class="text-xs text-white/40 animate-pulse">
+              Cargando preview…
+            </div>
+
+            <div v-else-if="previewError" class="text-xs text-api-bad">
+              {{ previewError }}
+            </div>
+
+            <div v-else-if="previewType === 'select' && previewColumns.length" class="overflow-x-auto rounded-xl border border-white/5">
+              <table class="w-full text-left border-collapse">
+                <thead class="bg-white/5 text-white/60 text-[10px]">
+                  <tr>
+                    <th
+                      v-for="c in previewColumns"
+                      :key="c"
+                      class="p-2 font-mono border-b border-white/10 whitespace-nowrap"
+                    >
+                      {{ c }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="text-[11px]">
+                  <tr
+                    v-for="(r, i) in previewRows"
+                    :key="i"
+                    class="border-b border-white/5 hover:bg-white/5"
+                  >
+                    <td
+                      v-for="c in previewColumns"
+                      :key="c"
+                      class="p-2 font-mono text-white/80 whitespace-nowrap"
+                    >
+                      {{ r[c] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div v-else class="text-xs text-white/30 italic">
+              Sin datos.
+            </div>
+          </div>
         </div>
       </aside>
 
       <!-- CENTER -->
-      <section class="flex flex-col gap-4">
+      <section
+        class="flex flex-col gap-4"
+        :class="activePanel === 'query' ? 'flex' : 'hidden lg:flex'"
+      >
         <!-- NL INPUT -->
         <div class="bg-panel border border-border-subtle rounded-2xl p-4">
           <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -137,7 +223,7 @@
               <h3 class="text-xs font-bold text-white/50 mb-2 uppercase">
                 SQL Generado
               </h3>
-              <pre class="font-mono text-sm text-emerald-400 overflow-x-auto">
+              <pre class="font-mono text-sm text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words">
 {{ lastSQL || '—' }}
               </pre>
             </div>
@@ -203,7 +289,7 @@
                       <th
                         v-for="c in columns"
                         :key="c"
-                        class="p-3 font-mono border-b border-white/10"
+                        class="p-3 font-mono border-b border-white/10 whitespace-nowrap"
                       >
                         {{ c }}
                       </th>
@@ -219,7 +305,7 @@
                       <td
                         v-for="c in columns"
                         :key="c"
-                        class="p-3 font-mono text-white/80"
+                        class="p-3 font-mono text-white/80 whitespace-nowrap"
                       >
                         {{ r[c] }}
                       </td>
@@ -237,7 +323,10 @@
       </section>
 
       <!-- LOGS -->
-      <aside class="bg-panel border border-border-subtle rounded-2xl p-4 flex flex-col">
+      <aside
+        class="bg-panel border border-border-subtle rounded-2xl p-4 flex flex-col"
+        :class="activePanel === 'logs' ? 'flex' : 'hidden lg:flex'"
+      >
         <div class="flex items-center justify-between mb-4">
           <h2 class="font-bold text-sm uppercase text-white/50">Activity Logs</h2>
           <button class="text-[10px] bg-white/5 px-2 py-1 rounded" @click="logs = []">
@@ -262,7 +351,16 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { health, listTables, describeTable, executeNL, executeSQL } from './lib/api'
+import {
+  health,
+  listTables,
+  describeTable,
+  getTableData,
+  executeNL,
+  executeSQL
+} from './lib/api'
+
+const activePanel = ref('query') // 'tables' | 'query' | 'logs'
 
 const nl = ref('crear una tabla llamada usuarios con columnas id, nombre y edad')
 const allowWrite = ref(true)
@@ -275,6 +373,13 @@ const tables = ref([])
 const selectedTable = ref('')
 const tableSchema = ref([])
 const describeLoading = ref(false)
+
+// preview
+const previewLoading = ref(false)
+const previewType = ref('')
+const previewColumns = ref([])
+const previewRows = ref([])
+const previewError = ref('')
 
 const lastSQL = ref('')
 const sqlInput = ref('')
@@ -307,26 +412,56 @@ function resetResult() {
   error.value = ''
 }
 
+function resetPreview() {
+  previewType.value = ''
+  previewColumns.value = []
+  previewRows.value = []
+  previewError.value = ''
+}
+
 async function refreshHealth() {
   try {
     const h = await health()
     healthOk.value = !!h.ok
     dbName.value = h.db || '—'
     log('GET /health -> ok')
-  } catch {
+  } catch (e) {
     healthOk.value = false
-    log('GET /health -> error')
+    log(`GET /health -> error: ${e?.message || 'fail'}`)
   }
 }
 
 async function refreshTables() {
   try {
     const res = await listTables()
-    tables.value = Array.isArray(res) ? res : res.tables || []
+    tables.value = res?.tables || []
     log(`GET /tables -> ${tables.value.length} tablas`)
-  } catch {
+  } catch (e) {
     tables.value = []
-    log('GET /tables -> error')
+    log(`GET /tables -> error: ${e?.message || 'fail'}`)
+  }
+}
+
+async function refreshPreview() {
+  if (!selectedTable.value) return
+  resetPreview()
+  previewLoading.value = true
+  try {
+    const p = await getTableData(selectedTable.value, 10)
+    previewType.value = p.type || ''
+    previewColumns.value = p.columns || []
+    previewRows.value = p.rows || []
+
+    if (p.type === 'error') {
+      previewError.value = p.message || 'Error en preview'
+    }
+
+    log(`GET /data/${selectedTable.value} -> ok`)
+  } catch (e) {
+    previewError.value = e?.message || 'Error consultando preview'
+    log(`GET /data/${selectedTable.value} -> error: ${e?.message || 'fail'}`)
+  } finally {
+    previewLoading.value = false
   }
 }
 
@@ -334,15 +469,23 @@ async function selectTable(t) {
   selectedTable.value = t
   describeLoading.value = true
   tableSchema.value = []
+  resetPreview()
+
   try {
     const d = await describeTable(t)
     tableSchema.value = d.columns || []
     log(`GET /describe/${t} -> ok`)
-  } catch {
-    log(`GET /describe/${t} -> error`)
+  } catch (e) {
+    log(`GET /describe/${t} -> error: ${e?.message || 'fail'}`)
   } finally {
     describeLoading.value = false
   }
+
+  // trae preview automáticamente
+  await refreshPreview()
+
+  // en móvil, si elegiste una tabla, muéstrate la sección de tablas
+  activePanel.value = 'tables'
 }
 
 async function runNL() {
@@ -362,12 +505,22 @@ async function runNL() {
     }
 
     const res = out.result || {}
+    if (res.type === 'error') {
+      error.value = res.message || 'Error ejecutando la consulta'
+      return
+    }
+
     resultType.value = res.type || ''
     rowcount.value = res.rowcount ?? 0
     columns.value = res.columns || []
     rows.value = res.rows || []
 
-    if (resultType.value === 'write') await refreshTables()
+    if (resultType.value === 'write') {
+      await refreshTables()
+      if (selectedTable.value) await refreshPreview()
+    }
+
+    activePanel.value = 'query'
   } catch (e) {
     error.value = e?.message || 'Error de conexión'
   } finally {
@@ -389,12 +542,22 @@ async function runSQL() {
     }
 
     const res = out.result || {}
+    if (res.type === 'error') {
+      error.value = res.message || 'Error en SQL'
+      return
+    }
+
     resultType.value = res.type || ''
     rowcount.value = res.rowcount ?? 0
     columns.value = res.columns || []
     rows.value = res.rows || []
 
-    if (resultType.value === 'write') await refreshTables()
+    if (resultType.value === 'write') {
+      await refreshTables()
+      if (selectedTable.value) await refreshPreview()
+    }
+
+    activePanel.value = 'query'
   } catch (e) {
     error.value = e?.message || 'Error en SQL'
   } finally {
